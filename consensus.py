@@ -1,6 +1,7 @@
 import io
 import os
 
+import numpy as np
 import requests
 import zipfile
 
@@ -13,10 +14,26 @@ from flask import Flask, request, send_file
 from werkzeug.utils import safe_join
 
 
+class ARG:
+    """Request argument names"""
+    PYBOSSA_API = "pbapi"
+    OUTPUT_FORMAT = "format"
+    CONSENSUS_MODEL = "model"
+
+
+class ARG_DEFAULT:
+    """Default values for request args"""
+    OUTPUT_FORMAT = "csv"
+    CONSENSUS_MODEL = "DawidSkene"
+
+
 DATA = Literal["task", "task_run", "result"]
 FORMAT = Literal["csv", "json"]
 INFO_ONLY_EXT = "_info_only"
 TEMP_DIR = safe_join("./", ".tmp/")
+TASK_KEY = "task_id"
+CONSENSUS_COL = "consensus"
+
 
 app = Flask(__name__)
 
@@ -46,6 +63,20 @@ def _export_data_from_pybossa(api_url: str, data_type: DATA, **kwargs) -> Tuple[
     return zip_file, response
 
 
+def file_path(fname:str, dir_=None) -> str:
+    """Return full path of a file.
+
+    Args:
+        fname: File name/path
+        dir_: Optional. Path of a file
+
+    Returns:
+        File path.
+
+    """
+    return fname if dir_ is None else os.path.join(dir_, fname)
+
+
 def clean_files(files: Union[str, List[str]], dir_: str = None):
     """
 
@@ -59,7 +90,7 @@ def clean_files(files: Union[str, List[str]], dir_: str = None):
     if not isinstance(files, list):
         files = [files]
     for fname in files:
-        fpath = fname if dir_ is None else os.path.join(dir_, fname)
+        fpath = file_path(fname, dir_)
         if os.path.exists(fpath):
             os.remove(fpath)
 
@@ -151,7 +182,7 @@ def make_zip(files: Union[str, List[str]], dir_: str = None, zip_path: str = Non
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
         for fname in files:
-            fpath = fname if dir_ is None else os.path.join(dir_, fname)
+            fpath = file_path(fname, dir_)
             zip_file.write(fpath, arcname=os.path.basename(fname))
     if zip_path is not None:
         # Remove existing file, just in case
@@ -179,21 +210,102 @@ def return_zip(flask_request: flask.Request, zip_buffer: io.BytesIO) -> flask.Re
     return resp
 
 
+def compute_consensus(task_info_only: str, task: str, task_run: str, task_key: str, model: str,
+                      dir_=None, sep=",") -> Tuple[List[str], List[cs.consensus.DiscreteConsensus]]:
+    """
+
+    Args:
+        task_info_only:
+        task:
+        task_run:
+        task_key:
+        model:
+        dir_:
+        sep:
+
+    Returns:
+        A 2-tuple of questions and consensuses for them
+    """
+    # Prepare data
+    data_ = None
+    try:
+        data_ = cs.data.Data.from_pybossa(
+            file_path(task_run, dir_),
+            questions=None,  # This will be automatically extracted by the cs
+            data_src="CS Project Builder",
+            # preprocess=preprocess if preprocess else self.preprocess,
+            # task_ids=task_ids,
+            # categories=categories,
+            task_info_file=file_path(task_info_only, dir_),
+            task_file=file_path(task, dir_),
+            field_task_key=task_key,
+            # other_columns=other_columns,
+            delimiter=sep)
+        questions = data_.questions
+    except Exception as err:
+        print("Error in creating crowdnalysis.data.Data:", err)
+        questions = ["N/A"]
+    try:
+        m = cs.factory.Factory.make(model)
+        # Compute consensus for each question
+        consensuses, _ = m.fit_and_compute_consensuses_from_data(d=data_, questions=questions)
+    except Exception as err:
+        print("Error in computing consensus:", err)
+        consensuses = [None] * len(questions)
+    print("questions, consensuses:", questions, consensuses)
+    return questions, consensuses
+
+
+def add_consensus_to_results(result: str, consensuses: List[np.ndarray], questions: List[str], dir_=None, sep=","):
+    """
+    Extends the result.csv file one column per the consensus of each question. The same file is overwritten.
+
+    Args:
+        consensuses:
+        questions:
+        result: Full path to the result.csv file
+        dir_:
+        sep:
+
+    Returns:
+        None.
+    """
+    try:
+        result_path = file_path(result, dir_)
+        df_result = pd.read_csv(result_path)
+        for ix, consensus in enumerate(consensuses):
+            if consensus is not None:
+                best = np.argmax(consensus, axis=1)
+                best_lbl = best.apply(lambda x: questions[x], axis=0)
+            else:
+                best_lbl = np.full((df_result.shape[0]), np.nan)
+            df_result[questions[ix]] = df_result[CONSENSUS_COL + "_" + questions[ix]] = best_lbl
+        print("df_result.cols:", list(df_result.columns))
+        df_result.to_csv(result_path, sep=sep)
+    except Exception as err:
+        print("Error in adding consensus column(s) to the result file:", err)
+
+
 @app.route("/api/")
 def index():
     # print("HTTP_ORIGIN:", request.environ.get("HTTP_ORIGIN", "localhost"))
     # print("request.url:", request.url)
-    # Get the Pybossa API from the request URL
-    pbapi_url = request.args.get("pbapi")
+    # Get the Pybossa API  and other arguments from the request URL
+    pbapi_url = request.args.get(ARG.PYBOSSA_API)
+    consensus_model = request.args.get(ARG.CONSENSUS_MODEL, default=ARG_DEFAULT.CONSENSUS_MODEL)
+    assert consensus_model in cs.factory.Factory.list_registered_algorithms()
+    output_format = request.args.get(ARG.OUTPUT_FORMAT, default=ARG_DEFAULT.OUTPUT_FORMAT)
+    assert output_format in FORMAT.__args__
     # print("pbapi:", pbapi_url)
     # Export task* files
     task_info_only, task, task_run_info_only, task_run = export_task_files(api_url=pbapi_url, extract_to=TEMP_DIR)
-    # TODO: Compute the consensus
     # Export 'result' file
     result_info_only, result = export_result_file(api_url=pbapi_url, extract_to=TEMP_DIR)
-    # TODO: Add consensus column to the result file
-    # df_result = pd.read_csv(result)
-    # print("df_result.cols:", list(df_result.columns))
+    # Compute the consensus
+    # TODO (OM, 20211213): Would the task_key change for some project?
+    questions, consensuses = compute_consensus(task_info_only, task, task_run, task_key=TASK_KEY, model=consensus_model)
+    # Add consensus column to the result file
+    add_consensus_to_results(result, consensuses, questions)
     # Make new zip for the result file
     _, zip_buffer = make_zip(files=[result_info_only, result])
     # Return zip
