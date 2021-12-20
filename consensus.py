@@ -1,5 +1,9 @@
+import datetime
 import io
 import os
+
+from http import cookies
+from typing import Dict, List, Literal, Union, Tuple
 
 import numpy as np
 import requests
@@ -9,8 +13,9 @@ import crowdnalysis as cs
 import flask
 import pandas as pd
 
-from typing import List, Literal, Union, Tuple
+
 from flask import Flask, request, send_file
+from flask_cors import CORS, cross_origin
 from werkzeug.utils import safe_join
 
 
@@ -31,11 +36,25 @@ DATA = Literal["task", "task_run", "result"]
 FORMAT = Literal["csv", "json"]
 INFO_ONLY_EXT = "_info_only"
 TEMP_DIR = safe_join("./", ".tmp/")
-TASK_KEY = "task_id"
+# TASK_ID = "task_id"
+TASK_KEY = "id"
 CONSENSUS_COL = "consensus"
 
 
 app = Flask(__name__)
+# CORS_RESOURCES = {r"/zapi/*": {"origins": "*",
+#                               "allow_headers": ['Content-Type',
+#                                                 'Authorization'],
+#                               "methods": "*"
+#                               }}
+CORS_RESOURCES = {r"/api/*": {"origins": "*",
+                              "allow_headers": ['Content-Type',
+                                                'Authorization'],
+                              "max_age": 21600
+                              }}
+cors = CORS(app, resources=CORS_RESOURCES)  # Allow cross-domain requests
+
+# headers_dict = None
 
 
 class UnexpectedFileError(Exception):
@@ -50,6 +69,7 @@ def _export_data_from_pybossa(api_url: str, data_type: DATA, **kwargs) -> Tuple[
         api_url: Pybossa API URL
         data_type: Data type to be exported
         **kwargs: Passed over to the `requests.get()` method
+
     Returns:
         2-tuple of (Zip file, `requests.Response`) returned from the Pybossa API.
     """
@@ -58,7 +78,11 @@ def _export_data_from_pybossa(api_url: str, data_type: DATA, **kwargs) -> Tuple[
         "type": data_type,
         "format": "csv"  # crowdnalysis expects CSV
     }
+    print(f"I am about to make a request to the Pybossa API for {data_type}s")
+    # print("api_url:", api_url, "\nparams:", params, "\nkwargs:\n", kwargs)
     response = requests.get(api_url, params=params, allow_redirects=True, **kwargs)
+    print("Pybossa API response.status_code:", response.status_code)
+    # print("Pybossa API response.headers:\n", response.headers)
     zip_file = zipfile.ZipFile(io.BytesIO(response.content))
     return zip_file, response
 
@@ -129,40 +153,42 @@ def _extract_files_in_zip(zip_file: zipfile.ZipFile, extract_to: str) -> Tuple[s
             os.path.join(extract_to, zip_members[1 - idx_info_only_file]))
 
 
-def export_task_files(api_url: str, extract_to: str) -> Tuple[str, str, str, str]:
+def export_task_files(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str, str, str, requests.Response]:
     """
 
     Args:
         api_url: Pybossa API URL
         extract_to: Extraction path for the task files
+        **kwargs: Passed over to the `_export_data_from_pybossa()`
 
     Returns:
-        4-Tuple of full paths to (task_info_only, task, task_run_info_only, task_run) files fetched from Pybossa
+        5-Tuple of full paths to (task_info_only, task, task_run_info_only, task_run) files fetched from Pybossa
     """
     # Get the exported "task" zip
-    zip_file, _ = _export_data_from_pybossa(api_url=api_url, data_type="task")
+    zip_file, _ = _export_data_from_pybossa(api_url=api_url, data_type="task", **kwargs)
     task_info_only, task = _extract_files_in_zip(zip_file, extract_to)
     # Get the exported "task_run" zip
-    zip_file, _ = _export_data_from_pybossa(api_url=api_url, data_type="task_run")
+    zip_file, response = _export_data_from_pybossa(api_url=api_url, data_type="task_run", **kwargs)
     task_run_info_only, task_run = _extract_files_in_zip(zip_file, extract_to)
 
-    return task_info_only, task, task_run_info_only, task_run
+    return task_info_only, task, task_run_info_only, task_run, response
 
 
-def export_result_file(api_url: str, extract_to: str) -> Tuple[str, str]:
+def export_result_file(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str, requests.Response]:
     """
 
     Args:
         api_url: Pybossa API URL
         extract_to: Extraction path for the result file
+        **kwargs: Passed over to the `_export_data_from_pybossa()`
 
     Returns:
-        2-Tuple of full paths to (result_info_only, result) fıles fetched from Pybossa
+        3-Tuple of full paths to (result_info_only, result) fıles fetched from Pybossa
     """
     # Get the exported "result" zip
-    zip_file, _ = _export_data_from_pybossa(api_url, data_type="result")
+    zip_file, response = _export_data_from_pybossa(api_url, data_type="result", **kwargs)
     result_info_only, result = _extract_files_in_zip(zip_file, extract_to)
-    return result_info_only, result
+    return result_info_only, result, response
 
 
 def make_zip(files: Union[str, List[str]], dir_: str = None, zip_path: str = None) -> Tuple[zipfile.ZipFile,
@@ -194,7 +220,7 @@ def make_zip(files: Union[str, List[str]], dir_: str = None, zip_path: str = Non
     return zip_file, zip_buffer
 
 
-def return_zip(flask_request: flask.Request, zip_buffer: io.BytesIO) -> flask.Response:
+def service_response(flask_request: flask.Request, pybossa_api_resp, zip_buffer: io.BytesIO) -> flask.Response:
     """"""
     # Send file to the user as an attachment
     resp = send_file(
@@ -202,10 +228,21 @@ def return_zip(flask_request: flask.Request, zip_buffer: io.BytesIO) -> flask.Re
         mimetype="application/octet-stream",  # pbapi_resp.headers["content-type"],
         # as_attachment=False)  # C3S, deals with downloading the content as a zip attachment
         as_attachment=True,  # In case, the API is called by other means...
-        attachment_filename="result.zip")
+        attachment_filename="result.zip",
+    )
     # Add essential response headers
     resp.headers.add("Access-Control-Allow-Credentials", "true")
-    resp.headers.add("Access-Control-Allow-Origin", flask_request.environ.get("HTTP_ORIGIN", "localhost"))
+    # Allow all clients access the response. If you do not want this, use whitelist of allowed origin(s)
+    # resp.headers.add("Access-Control-Allow-Origin", flask_request.environ.get("HTTP_ORIGIN", "localhost"))
+    # resp.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+    # resp.headers.add("Access-Control-Allow-Headers", "Content-Type")
+    # resp.headers.add("Set-Cookie", flask_request.headers.get("Cookie"))
+    for h in ["Connection"]:  # "ETag", "Expires", "Last-Modified", "Cache-Control", "Set-Cookie", "Vary"]:
+        if h in pybossa_api_resp.headers:
+            if h in resp.headers:
+                resp.headers[h] = pybossa_api_resp.headers.get(h)
+            else:
+                resp.headers.add(h, pybossa_api_resp.headers.get(h))
 
     return resp
 
@@ -242,6 +279,7 @@ def compute_consensus(task_info_only: str, task: str, task_run: str, task_key: s
             # other_columns=other_columns,
             delimiter=sep)
         questions = data_.questions
+        print("data_.df:", data_.df)
     except Exception as err:
         print("Error in creating crowdnalysis.data.Data:", err)
         questions = ["N/A"]
@@ -286,10 +324,37 @@ def add_consensus_to_results(result: str, consensuses: List[np.ndarray], questio
         print("Error in adding consensus column(s) to the result file:", err)
 
 
+def prep_cookies(cookies_raw: str) -> Dict:
+    """
+
+    Args:
+        cookies_raw: Request cookies
+
+    Returns:
+        A dictionary of morsel values.
+    """
+    sc = cookies.SimpleCookie()
+    sc.load(cookies_raw)
+    cookies_dict = {}
+    for k, morsel in sc.items():
+        cookies_dict[k] = morsel.value
+    return cookies_dict
+
+
 @app.route("/api/")
+@cross_origin()
 def index():
+    print("{0} Service call {0}\n{1}".format("-" * 30, datetime.datetime.now()))
     # print("HTTP_ORIGIN:", request.environ.get("HTTP_ORIGIN", "localhost"))
     # print("request.url:", request.url)
+    # print("request.headers:\n", request.headers)
+    # print("request.headers.cookies:\n", request.headers.get("Cookie"))
+    req_cookies = prep_cookies(request.headers.get("Cookie"))
+    # req_cookies = {}
+    # print("cookies:\n", req_cookies)
+    # headers_dict = {"Access-Control-Allow-Credentials": "true",
+    #                "Access-Control-Allow-Origin": request.environ.get("HTTP_ORIGIN", "localhost")}
+    # print("headers_dict:", headers_dict)
     # Get the Pybossa API  and other arguments from the request URL
     pbapi_url = request.args.get(ARG.PYBOSSA_API)
     consensus_model = request.args.get(ARG.CONSENSUS_MODEL, default=ARG_DEFAULT.CONSENSUS_MODEL)
@@ -297,19 +362,23 @@ def index():
     output_format = request.args.get(ARG.OUTPUT_FORMAT, default=ARG_DEFAULT.OUTPUT_FORMAT)
     assert output_format in FORMAT.__args__
     # print("pbapi:", pbapi_url)
+
     # Export task* files
-    task_info_only, task, task_run_info_only, task_run = export_task_files(api_url=pbapi_url, extract_to=TEMP_DIR)
+    task_info_only, task, task_run_info_only, task_run, _ = export_task_files(api_url=pbapi_url, extract_to=TEMP_DIR,
+                                                                              cookies=req_cookies)
     # Export 'result' file
-    result_info_only, result = export_result_file(api_url=pbapi_url, extract_to=TEMP_DIR)
+    result_info_only, result, pybossa_api_response = export_result_file(api_url=pbapi_url, extract_to=TEMP_DIR,
+                                                                        cookies=req_cookies)
     # Compute the consensus
     # TODO (OM, 20211213): Would the task_key change for some project?
     questions, consensuses = compute_consensus(task_info_only, task, task_run, task_key=TASK_KEY, model=consensus_model)
     # Add consensus column to the result file
     add_consensus_to_results(result, consensuses, questions)
     # Make new zip for the result file
-    _, zip_buffer = make_zip(files=[result_info_only, result])
+    # _, zip_buffer = make_zip(files=[result_info_only, result])
+    _, zip_buffer = make_zip(files=[task_info_only, task])
     # Return zip
-    response = return_zip(flask_request=request, zip_buffer=zip_buffer)
+    response = service_response(flask_request=request, pybossa_api_resp=pybossa_api_response, zip_buffer=zip_buffer)
     # Clean files upon exit
     clean_files([task_info_only, task, task_run_info_only, task_run, result_info_only, result])
     # Return the response
