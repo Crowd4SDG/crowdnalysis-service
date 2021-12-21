@@ -1,9 +1,11 @@
+import ast
 import datetime
 import io
 import os
+import re
 
 from http import cookies
-from typing import Dict, List, Literal, Union, Tuple
+from typing import Any, Dict, List, Literal, Union, Tuple
 
 import numpy as np
 import requests
@@ -85,6 +87,42 @@ def _export_data_from_pybossa(api_url: str, data_type: DATA, **kwargs) -> Tuple[
     # print("Pybossa API response.headers:\n", response.headers)
     zip_file = zipfile.ZipFile(io.BytesIO(response.content))
     return zip_file, response
+
+
+def export_project_QnAs(api_url, **kwargs) -> Dict[str, List[Any]]:
+    # Call Pybossa API
+    response = requests.get(api_url, allow_redirects=True, **kwargs)
+    print("info_api status code:", response.status_code)
+    # print("info:", response.json())
+    resp_json = response.json()
+    task_presenter = resp_json[0]["info"]["task_presenter"]
+    # print("task_presenter:", task_presenter)
+    qs_str = re.search(r'(?<=questions":)(.*)(?=],\s*"answers)', task_presenter).group(0) + "]"
+    print("Qs:", qs_str)  # e.g.  [{"question":"Relevant","answers":["Yes", "No"]}]
+    qs_list = ast.literal_eval(qs_str)
+    assert isinstance(qs_list, list)
+    QnAs = {}
+    for d in qs_list:
+        assert isinstance(d, dict)
+        assert sorted(d.keys()) == ["answers", "question"]
+        QnAs[d["question"]] = d["answers"]
+    print("QnAs:", QnAs)
+    return QnAs
+
+
+def get_project_info_api_url(tasks_api: str) -> str:
+    """Builds the API URL for the project out of the tasks API URL.
+
+    Args:
+        tasks_api: The url passed to the service by the Export Button on C3S frontend
+
+    Returns:
+        Returns the URL with params to be used in GET.
+    """
+    base = re.match(r"(.+)project", tasks_api).group(1)  # e.g. "http://localhost:20004/
+    project_name = re.search("(?<=project/)(.*)(?=/tasks)", tasks_api).group(1)
+    info_api = f"{base}api/project?name={project_name}"
+    return info_api
 
 
 def file_path(fname:str, dir_=None) -> str:
@@ -247,11 +285,12 @@ def service_response(flask_request: flask.Request, pybossa_api_resp, zip_buffer:
     return resp
 
 
-def compute_consensus(task_info_only: str, task: str, task_run: str, task_key: str, model: str,
-                      dir_=None, sep=",") -> Tuple[List[str], List[cs.consensus.DiscreteConsensus]]:
+def compute_consensus(questions: List[str], task_info_only: str, task: str, task_run: str, task_key: str, model: str,
+                      dir_=None, sep=",") -> Dict[str, cs.consensus.DiscreteConsensus]:
     """
 
     Args:
+        questions:
         task_info_only:
         task:
         task_run:
@@ -261,16 +300,21 @@ def compute_consensus(task_info_only: str, task: str, task_run: str, task_key: s
         sep:
 
     Returns:
-        A 2-tuple of questions and consensuses for them
+        A dictionary of consensus for each question
     """
     # Prepare data
     data_ = None
+
+    def _preprocess(df):
+        df = df.rename(columns={f"info_{ix}": q for ix, q in enumerate(questions)})
+        return df
+
     try:
         data_ = cs.data.Data.from_pybossa(
             file_path(task_run, dir_),
-            questions=None,  # This will be automatically extracted by the cs
+            questions=questions,  # This will be automatically extracted by the cs
             data_src="CS Project Builder",
-            # preprocess=preprocess if preprocess else self.preprocess,
+            preprocess=_preprocess,
             # task_ids=task_ids,
             # categories=categories,
             task_info_file=file_path(task_info_only, dir_),
@@ -278,8 +322,8 @@ def compute_consensus(task_info_only: str, task: str, task_run: str, task_key: s
             field_task_key=task_key,
             # other_columns=other_columns,
             delimiter=sep)
-        questions = data_.questions
-        print("data_.df:", data_.df)
+        print("data_.questions:", data_.questions)
+        print("data_.df:\n", data_.df)
     except Exception as err:
         print("Error in creating crowdnalysis.data.Data:", err)
         questions = ["N/A"]
@@ -290,8 +334,10 @@ def compute_consensus(task_info_only: str, task: str, task_run: str, task_key: s
     except Exception as err:
         print("Error in computing consensus:", err)
         consensuses = [None] * len(questions)
-    print("questions, consensuses:", questions, consensuses)
-    return questions, consensuses
+    # consensus_dict = dict(zip(questions, consensuses))
+    # print("consensus_dict:", consensus_dict)
+    print("consensuses:", consensuses)
+    return consensuses
 
 
 def add_consensus_to_results(result: str, consensuses: List[np.ndarray], questions: List[str], dir_=None, sep=","):
@@ -369,18 +415,23 @@ def index():
     # Export 'result' file
     result_info_only, result, pybossa_api_response = export_result_file(api_url=pbapi_url, extract_to=TEMP_DIR,
                                                                         cookies=req_cookies)
+    # Get questions
+    info_api = get_project_info_api_url(pbapi_url)
+    QnAs = export_project_QnAs(info_api, cookies=req_cookies)
     # Compute the consensus
-    # TODO (OM, 20211213): Would the task_key change for some project?
-    questions, consensuses = compute_consensus(task_info_only, task, task_run, task_key=TASK_KEY, model=consensus_model)
+    questions = list(QnAs.keys())
+    print("questions:", questions)
+    consensuses = compute_consensus(questions, task_info_only, task, task_run, task_key=TASK_KEY, model=consensus_model)
     # Add consensus column to the result file
-    add_consensus_to_results(result, consensuses, questions)
+    # add_consensus_to_results(result, consensuses, questions)
     # Make new zip for the result file
     # _, zip_buffer = make_zip(files=[result_info_only, result])
-    _, zip_buffer = make_zip(files=[task_info_only, task])
+    # _, zip_buffer = make_zip(files=[task_info_only, task])
     # Return zip
-    response = service_response(flask_request=request, pybossa_api_resp=pybossa_api_response, zip_buffer=zip_buffer)
+    # response = service_response(flask_request=request, pybossa_api_resp=pybossa_api_response, zip_buffer=zip_buffer)
     # Clean files upon exit
     clean_files([task_info_only, task, task_run_info_only, task_run, result_info_only, result])
     # Return the response
-    return response
+    # return response
+    return "OK"
 
