@@ -383,7 +383,7 @@ def compute_consensuses(questions: List[str], task_info_only: str, task: str, ta
         app.logger.info(f"Consensuses computed successfully for the questions: {questions}")
     except Exception as err:
         app.logger.error("Error in computing consensus: {}".format(err))
-        consensuses = [None] * len(questions)
+        consensuses = {}
     return consensuses, data_
 
 
