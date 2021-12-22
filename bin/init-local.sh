@@ -9,7 +9,7 @@ pip install -U pip
 pip install -r requirements.txt
 export PYTHONPATH=$PYTHONPATH:${PWD}/src
 
-export FLASK_APP=consensus.py
-export FLASK_DEBUG=1 # 0 for production
+export FLASK_APP=service.py
+export FLASK_DEBUG=0 # 0 production, 1: development
 
 flask run
