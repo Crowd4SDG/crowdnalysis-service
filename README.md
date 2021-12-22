@@ -9,8 +9,9 @@ The use case is as follows:
 2. The request is forwarded to the crowdnalysis-service;
 3. The service 
    - Calls Pybossa API to extract `task`, `task_run` and `result` data,
-   - Computes the consensus using a given model,
-   - Creates a `CSV` file for the consensus on tasks for each question that was asked to the crowd,
+   - Computes the **consensus** on tasks for each *question* that was asked to the crowd using  
+the given consensus *model*,
+   - Creates a `CSV` file for each consensus,
    - Sends the result and consensus files back to the C3S in a `zip` file;
 4. The user downloads the `.zip` file without leaving the C3S frontend in any of the above steps.
 
