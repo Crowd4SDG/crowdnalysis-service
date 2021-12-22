@@ -3,6 +3,7 @@ import datetime
 import io
 import os
 import re
+import unicodedata
 
 from http import cookies
 from typing import Any, Dict, List, Literal, Union, Tuple
@@ -41,6 +42,7 @@ TEMP_DIR = safe_join("./", ".tmp/")
 # TASK_ID = "task_id"
 TASK_KEY = "id"
 CONSENSUS_COL = "consensus"
+SEP = ","
 
 
 app = Flask(__name__)
@@ -64,7 +66,7 @@ class UnexpectedFileError(Exception):
     pass
 
 
-def _export_data_from_pybossa(api_url: str, data_type: DATA, **kwargs) -> Tuple[zipfile.ZipFile, requests.Response]:
+def _import_data_from_pybossa(api_url: str, data_type: DATA, **kwargs) -> Tuple[zipfile.ZipFile, requests.Response]:
     """Get exported task files
 
     Args:
@@ -89,7 +91,7 @@ def _export_data_from_pybossa(api_url: str, data_type: DATA, **kwargs) -> Tuple[
     return zip_file, response
 
 
-def export_project_QnAs(api_url, **kwargs) -> Dict[str, List[Any]]:
+def import_pybossa_project_QnAs(api_url, **kwargs) -> Dict[str, List[Any]]:
     # Call Pybossa API
     response = requests.get(api_url, allow_redirects=True, **kwargs)
     print("info_api status code:", response.status_code)
@@ -110,19 +112,37 @@ def export_project_QnAs(api_url, **kwargs) -> Dict[str, List[Any]]:
     return QnAs
 
 
-def get_project_info_api_url(tasks_api: str) -> str:
+def get_project_info_api_url(tasks_api: str) -> Tuple[str, str]:
     """Builds the API URL for the project out of the tasks API URL.
 
     Args:
         tasks_api: The url passed to the service by the Export Button on C3S frontend
 
     Returns:
-        Returns the URL with params to be used in GET.
+        Returns the 2-tuple of URL with params to be used in GET and the project name.
     """
     base = re.match(r"(.+)project", tasks_api).group(1)  # e.g. "http://localhost:20004/
     project_name = re.search("(?<=project/)(.*)(?=/tasks)", tasks_api).group(1)
     info_api = f"{base}api/project?name={project_name}"
-    return info_api
+    return info_api, project_name
+
+
+def slugify(value, allow_unicode=False):
+    """
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single dashes. Remove characters that aren't alphanumerics,
+    underscores, or hyphens. Convert to lowercase. Also strip leading and
+    trailing whitespace, dashes, and underscores.
+
+    Ref: https://github.com/django/django/blob/master/django/utils/text.py
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value.lower())
+    return re.sub(r'[-\s]+', '-', value).strip('-_')
 
 
 def file_path(fname:str, dir_=None) -> str:
@@ -191,40 +211,40 @@ def _extract_files_in_zip(zip_file: zipfile.ZipFile, extract_to: str) -> Tuple[s
             os.path.join(extract_to, zip_members[1 - idx_info_only_file]))
 
 
-def export_task_files(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str, str, str, requests.Response]:
+def import_task_files(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str, str, str, requests.Response]:
     """
 
     Args:
         api_url: Pybossa API URL
         extract_to: Extraction path for the task files
-        **kwargs: Passed over to the `_export_data_from_pybossa()`
+        **kwargs: Passed over to the `_import_data_from_pybossa()`
 
     Returns:
         5-Tuple of full paths to (task_info_only, task, task_run_info_only, task_run) files fetched from Pybossa
     """
     # Get the exported "task" zip
-    zip_file, _ = _export_data_from_pybossa(api_url=api_url, data_type="task", **kwargs)
+    zip_file, _ = _import_data_from_pybossa(api_url=api_url, data_type="task", **kwargs)
     task_info_only, task = _extract_files_in_zip(zip_file, extract_to)
     # Get the exported "task_run" zip
-    zip_file, response = _export_data_from_pybossa(api_url=api_url, data_type="task_run", **kwargs)
+    zip_file, response = _import_data_from_pybossa(api_url=api_url, data_type="task_run", **kwargs)
     task_run_info_only, task_run = _extract_files_in_zip(zip_file, extract_to)
 
     return task_info_only, task, task_run_info_only, task_run, response
 
 
-def export_result_file(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str, requests.Response]:
+def import_result_file(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str, requests.Response]:
     """
 
     Args:
         api_url: Pybossa API URL
         extract_to: Extraction path for the result file
-        **kwargs: Passed over to the `_export_data_from_pybossa()`
+        **kwargs: Passed over to the `_import_data_from_pybossa()`
 
     Returns:
         3-Tuple of full paths to (result_info_only, result) fıles fetched from Pybossa
     """
     # Get the exported "result" zip
-    zip_file, response = _export_data_from_pybossa(api_url, data_type="result", **kwargs)
+    zip_file, response = _import_data_from_pybossa(api_url, data_type="result", **kwargs)
     result_info_only, result = _extract_files_in_zip(zip_file, extract_to)
     return result_info_only, result, response
 
@@ -285,8 +305,8 @@ def service_response(flask_request: flask.Request, pybossa_api_resp, zip_buffer:
     return resp
 
 
-def compute_consensus(questions: List[str], task_info_only: str, task: str, task_run: str, task_key: str, model: str,
-                      dir_=None, sep=",") -> Dict[str, cs.consensus.DiscreteConsensus]:
+def compute_consensuses(questions: List[str], task_info_only: str, task: str, task_run: str, task_key: str, model: str,
+                        dir_=None, sep=SEP) -> Tuple[Dict[str, np.ndarray], cs.data.Data]:
     """
 
     Args:
@@ -337,37 +357,65 @@ def compute_consensus(questions: List[str], task_info_only: str, task: str, task
     # consensus_dict = dict(zip(questions, consensuses))
     # print("consensus_dict:", consensus_dict)
     print("consensuses:", consensuses)
-    return consensuses
+    return consensuses, data_
 
 
-def add_consensus_to_results(result: str, consensuses: List[np.ndarray], questions: List[str], dir_=None, sep=","):
+# def add_consensus_to_results(result: str, consensuses: List[np.ndarray], questions: List[str], dir_=None, sep=SEP):
+#     """
+#     Extends the result.csv file one column per the consensus of each question. The same file is overwritten.
+#
+#     Args:
+#         consensuses:
+#         questions:
+#         result: Full path to the result.csv file
+#         dir_:
+#         sep:
+#
+#     Returns:
+#         None.
+#     """
+#     try:
+#         result_path = file_path(result, dir_)
+#         df_result = pd.read_csv(result_path)
+#         for ix, consensus in enumerate(consensuses):
+#             if consensus is not None:
+#                 best = np.argmax(consensus, axis=1)
+#                 best_lbl = best.apply(lambda x: questions[x], axis=0)
+#             else:
+#                 best_lbl = np.full((df_result.shape[0]), np.nan)
+#             df_result[questions[ix]] = df_result[CONSENSUS_COL + "_" + questions[ix]] = best_lbl
+#         print("df_result.cols:", list(df_result.columns))
+#         df_result.to_csv(result_path, sep=sep)
+#     except Exception as err:
+#         print("Error in adding consensus column(s) to the result file:", err)
+
+
+def export_consesuses_to_csv(data_: cs.data.Data, consensuses: Dict[str, np.ndarray], project_name: str,
+                             dir_: str = None, sep=SEP) -> List[str]:
     """
-    Extends the result.csv file one column per the consensus of each question. The same file is overwritten.
-
+    Exports consensus for each question to a separate CSV file
     Args:
+        data_:
         consensuses:
-        questions:
-        result: Full path to the result.csv file
+        project_name:
         dir_:
         sep:
 
     Returns:
-        None.
+        Paths to the CSV files.
     """
-    try:
-        result_path = file_path(result, dir_)
-        df_result = pd.read_csv(result_path)
-        for ix, consensus in enumerate(consensuses):
-            if consensus is not None:
-                best = np.argmax(consensus, axis=1)
-                best_lbl = best.apply(lambda x: questions[x], axis=0)
-            else:
-                best_lbl = np.full((df_result.shape[0]), np.nan)
-            df_result[questions[ix]] = df_result[CONSENSUS_COL + "_" + questions[ix]] = best_lbl
-        print("df_result.cols:", list(df_result.columns))
-        df_result.to_csv(result_path, sep=sep)
-    except Exception as err:
-        print("Error in adding consensus column(s) to the result file:", err)
+    csv_files = []
+    for question, consensus in consensuses.items():
+        df = cs.visualization.consensus_as_df(data_, question, consensus)
+        df.index.name = TASK_KEY
+        print(f"consensus for {question}:\n", df)
+        fname = "{p}_consensus_{q}.csv".format(p=slugify(project_name), q=slugify(question))
+        fpath = file_path(fname, dir_)
+        clean_files(fpath)
+        df.to_csv(fpath, sep=sep, index=True, header=True)
+        csv_files.append(fpath)
+        print(f"consensus for {question} written into {fpath}")
+    return csv_files
 
 
 def prep_cookies(cookies_raw: str) -> Dict:
@@ -410,28 +458,30 @@ def index():
     # print("pbapi:", pbapi_url)
 
     # Export task* files
-    task_info_only, task, task_run_info_only, task_run, _ = export_task_files(api_url=pbapi_url, extract_to=TEMP_DIR,
+    task_info_only, task, task_run_info_only, task_run, _ = import_task_files(api_url=pbapi_url, extract_to=TEMP_DIR,
                                                                               cookies=req_cookies)
     # Export 'result' file
-    result_info_only, result, pybossa_api_response = export_result_file(api_url=pbapi_url, extract_to=TEMP_DIR,
+    result_info_only, result, pybossa_api_response = import_result_file(api_url=pbapi_url, extract_to=TEMP_DIR,
                                                                         cookies=req_cookies)
     # Get questions
-    info_api = get_project_info_api_url(pbapi_url)
-    QnAs = export_project_QnAs(info_api, cookies=req_cookies)
+    info_api, project_name = get_project_info_api_url(pbapi_url)
+    QnAs = import_pybossa_project_QnAs(info_api, cookies=req_cookies)
     # Compute the consensus
     questions = list(QnAs.keys())
     print("questions:", questions)
-    consensuses = compute_consensus(questions, task_info_only, task, task_run, task_key=TASK_KEY, model=consensus_model)
+    consensuses, data_ = compute_consensuses(questions, task_info_only, task, task_run, task_key=TASK_KEY,
+                                             model=consensus_model)
+    # Export consensuses to CSV
+    csv_files = export_consesuses_to_csv(data_, consensuses, project_name, TEMP_DIR, sep=SEP)
     # Add consensus column to the result file
     # add_consensus_to_results(result, consensuses, questions)
     # Make new zip for the result file
-    # _, zip_buffer = make_zip(files=[result_info_only, result])
-    # _, zip_buffer = make_zip(files=[task_info_only, task])
+    _, zip_buffer = make_zip(files=[result_info_only, result] + csv_files)
     # Return zip
-    # response = service_response(flask_request=request, pybossa_api_resp=pybossa_api_response, zip_buffer=zip_buffer)
+    response = service_response(flask_request=request, pybossa_api_resp=pybossa_api_response, zip_buffer=zip_buffer)
     # Clean files upon exit
-    clean_files([task_info_only, task, task_run_info_only, task_run, result_info_only, result])
+    clean_files([task_info_only, task, task_run_info_only, task_run, result_info_only, result] + csv_files)
     # Return the response
-    # return response
+    return response
     return "OK"
 
