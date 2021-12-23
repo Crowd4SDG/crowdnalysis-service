@@ -22,5 +22,5 @@ When completed, the service is intended to run as a container in
 The service is basically a Flask application. After git cloning the repo, start the service by running:
 
 ```bash
-$ source bin/init-local.sh 
+$ source bin/init.sh 
 ```
