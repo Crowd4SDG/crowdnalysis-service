@@ -464,10 +464,10 @@ def main():
     assert consensus_model in cs.factory.Factory.list_registered_algorithms()
     output_format = request.args.get(ARG.OUTPUT_FORMAT, default=ARG_DEFAULT.OUTPUT_FORMAT)
     assert output_format in FORMAT.__args__
-    # Export task* files
+    # Import task* files
     task_info_only, task, task_run_info_only, task_run, _ = import_task_files(api_url=pbapi_url, extract_to=TEMP_DIR,
                                                                               cookies=req_cookies)
-    # Export 'result' file
+    # Import 'result' files
     result_files, pybossa_api_response = import_result_files(api_url=pbapi_url, extract_to=TEMP_DIR,
                                                              format_=output_format, cookies=req_cookies)
     # Get questions and answers configured for the project
@@ -477,11 +477,11 @@ def main():
     questions = list(QnAs.keys())
     consensuses, data_ = compute_consensuses(questions, task_info_only, task, task_run, task_key=TASK_KEY,
                                              model=consensus_model)
-    # Export consensuses to CSV
+    # Export consensuses to CSV/JSON
     consensus_files = export_consensuses_to_files(output_format, data_, consensuses, project_name, TEMP_DIR, sep=SEP)
-    # Make new zip for the result file
+    # Make new zip for the result files
     _, zip_buffer = make_zip(files=result_files + consensus_files)
-    # Return zip
+    # Prepare the service response as zip
     response = service_response(pybossa_api_resp=pybossa_api_response, zip_buffer=zip_buffer)
     # Clean files upon exit
     clean_files([task_info_only, task, task_run_info_only, task_run] + result_files + consensus_files)
