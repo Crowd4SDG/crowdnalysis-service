@@ -35,7 +35,7 @@ class ARG_DEFAULT:
     CONSENSUS_MODEL = "DawidSkene"
 
 
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.DEBUG if int(os.environ.get("FLASK_DEBUG", 0)) else logging.INFO
 DATA = Literal["task", "task_run", "result"]
 FORMAT = Literal["csv", "json"]
 INFO_ONLY_EXT = "_info_only"
@@ -317,6 +317,7 @@ def make_zip(files: Union[str, List[str]], dir_: str = None) -> Tuple[zipfile.Zi
             fpath = file_path(fname, dir_)
             zip_file.write(fpath, arcname=os.path.basename(fname))
     zip_buffer.seek(0)  # This line is important before sending the content
+    app.logger.info("Zip file formed with members: {}".format([os.path.basename(f) for f in files]))
     return zip_file, zip_buffer
 
 

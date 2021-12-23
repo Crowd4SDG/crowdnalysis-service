@@ -19,8 +19,9 @@ When completed, the service is intended to run as a container in
 [pybossa-dev](https://github.com/Crowd4SDG/pybossa-dev).
 
 ## Start the service
-The service is basically a Flask application. After git cloning the repo, start the service by running:
+The service is basically a [Flask](https://flask.palletsprojects.com/) application running on a [Gunicorn](https://gunicorn.org/) WSGI . 
+After git cloning the repo, start the service by running:
 
 ```bash
-$ source bin/init.sh 
+$ source bin/init.sh && source bin/boot.sh
 ```
