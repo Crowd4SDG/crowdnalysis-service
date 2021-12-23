@@ -270,7 +270,7 @@ def import_task_files(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str
     return task_info_only, task, task_run_info_only, task_run, response
 
 
-def import_result_file(api_url: str, extract_to: str, format_: FORMAT, **kwargs) -> Tuple[List[str], requests.Response]:
+def import_result_files(api_url: str, extract_to: str, format_: FORMAT, **kwargs) -> Tuple[List[str], requests.Response]:
     """Import result files of a project.
 
     Args:
@@ -280,8 +280,7 @@ def import_result_file(api_url: str, extract_to: str, format_: FORMAT, **kwargs)
         **kwargs: Passed over to the `_import_data_from_pybossa()`
 
     Returns:
-        2-Tuple of list of full paths to result files fetched from Pybossa together with the API
-        Response object
+        2-Tuple of list of full paths to result files fetched from Pybossa together with the API Response object
 
     Notes:
         Pybossa API returns a zip with two files when output format is CSV: ~result_info_only.csv, ~result.csv;
@@ -469,8 +468,8 @@ def main():
     task_info_only, task, task_run_info_only, task_run, _ = import_task_files(api_url=pbapi_url, extract_to=TEMP_DIR,
                                                                               cookies=req_cookies)
     # Export 'result' file
-    result_files, pybossa_api_response = import_result_file(api_url=pbapi_url, extract_to=TEMP_DIR,
-                                                            format_=output_format, cookies=req_cookies)
+    result_files, pybossa_api_response = import_result_files(api_url=pbapi_url, extract_to=TEMP_DIR,
+                                                             format_=output_format, cookies=req_cookies)
     # Get questions and answers configured for the project
     info_api, project_name = get_project_info_api_url(pbapi_url)
     QnAs = import_pybossa_project_qa(info_api, cookies=req_cookies)
