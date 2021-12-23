@@ -35,7 +35,7 @@ class ARG_DEFAULT:
     CONSENSUS_MODEL = "DawidSkene"
 
 
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 DATA = Literal["task", "task_run", "result"]
 FORMAT = Literal["csv", "json"]
 INFO_ONLY_EXT = "_info_only"
@@ -80,21 +80,24 @@ class UnexpectedFileError(Exception):
     pass
 
 
-def _import_data_from_pybossa(api_url: str, data_type: DATA, **kwargs) -> Tuple[zipfile.ZipFile, requests.Response]:
-    """Get exported task files from Pybossa
+def _import_data_from_pybossa(api_url: str, data_type: DATA, format_: FORMAT, **kwargs) -> Tuple[zipfile.ZipFile,
+                                                                                                 requests.Response]:
+    """Get exported task files from Pybossa.
 
     Args:
         api_url: Pybossa API URL for exporting tasks
         data_type: Data type to be exported
+        format_: Format of the exported files
         **kwargs: Passed over to the `requests.get()` method
 
     Returns:
         2-tuple of (Zip file, `requests.Response`) returned from the Pybossa API.
+
     """
     # Call Pybossa API
     params = {
         "type": data_type,
-        "format": "csv"  # crowdnalysis expects CSV
+        "format": format_
     }
     app.logger.debug(f"I am about to make a request to the Pybossa API for {data_type}s")
     response = requests.get(api_url, params=params, allow_redirects=True, **kwargs)
@@ -106,10 +109,6 @@ def _import_data_from_pybossa(api_url: str, data_type: DATA, **kwargs) -> Tuple[
 def import_pybossa_project_qa(api_url, **kwargs) -> Dict[str, List[Any]]:
     """Extract `questions` and their possible `answers` for a project.
 
-    Notes:
-        This information was found only within the `task_presenter` configuration.
-        See that template in CS Project Builder.
-
     Args:
         api_url: Pybossa API URL for fetching project info
         **kwargs: Passed over to the `requests.get()` method
@@ -117,6 +116,11 @@ def import_pybossa_project_qa(api_url, **kwargs) -> Dict[str, List[Any]]:
     Returns:
         A dictionary of (question, possible answers list) key-value pairs.
         e.g. {"Relevant": ["Yes", "No"]}
+
+    Notes:
+        Q&A information was found only within the `task_presenter` configuration.
+        See that template in CS Project Builder frontend.
+
     """
     # Call Pybossa API
     app.logger.debug(f"I am about to make a request to the Pybossa API for the project info")
@@ -138,13 +142,14 @@ def import_pybossa_project_qa(api_url, **kwargs) -> Dict[str, List[Any]]:
 
 
 def get_project_info_api_url(tasks_api: str) -> Tuple[str, str]:
-    """Builds the API URL for the project out of the tasks API URL.
+    """Build the API URL for the project out of the tasks API URL.
 
     Args:
         tasks_api: The url passed to the service by the Export Button on C3S frontend
 
     Returns:
         Returns the 2-tuple of URL with params to be used in GET and the project name.
+
     """
     base = re.match(r"(.+)project", tasks_api).group(1)  # e.g. "http://localhost:20004/
     project_name = re.search("(?<=project/)(.*)(?=/tasks)", tasks_api).group(1)
@@ -160,6 +165,7 @@ def slugify(value, allow_unicode=False):
     trailing whitespace, dashes, and underscores.
 
     Source: https://github.com/django/django/blob/master/django/utils/text.py
+
     """
     value = str(value)
     if allow_unicode:
@@ -192,6 +198,7 @@ def clean_files(files: Union[str, List[str]], dir_: str = None):
         files: A single or a list of file names
 
     Returns:
+        None.
 
     """
     if not isinstance(files, list):
@@ -203,8 +210,8 @@ def clean_files(files: Union[str, List[str]], dir_: str = None):
             app.logger.debug(f"Deleted {fpath}")
 
 
-def _extract_files_in_zip(zip_file: zipfile.ZipFile, extract_to: str) -> Tuple[str, str]:
-    """Extract zip members to the given path
+def _extract_task_files_in_zip(zip_file: zipfile.ZipFile, extract_to: str) -> Tuple[str, str]:
+    """Extract zip members to the given path.
 
     Args:
         zip_file: Zip file returned from the Pybossa API
@@ -217,7 +224,6 @@ def _extract_files_in_zip(zip_file: zipfile.ZipFile, extract_to: str) -> Tuple[s
         UnexpectedFileError: If there are not two files in the zip or base names of these two files do not match.
 
     """
-
     zip_members = zip_file.namelist()
     if len(zip_members) != 2:
         app.logger.error("More than two files received from Pybossa: {}".format(str(zip_members)))
@@ -235,12 +241,14 @@ def _extract_files_in_zip(zip_file: zipfile.ZipFile, extract_to: str) -> Tuple[s
     zip_file.extractall(extract_to)
     app.logger.debug(f"Extracted {zip_members} to {extract_to}.")
 
-    return (os.path.join(extract_to, zip_members[idx_info_only_file]),
-            os.path.join(extract_to, zip_members[1 - idx_info_only_file]))
+    return (file_path(zip_members[idx_info_only_file], extract_to),
+            file_path(zip_members[1 - idx_info_only_file], extract_to))
 
 
 def import_task_files(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str, str, str, requests.Response]:
-    """Import task and task_run files of a project
+    """Import task and task_run files of a project in CSV format.
+
+    crowdnalysis works with CSV files.
 
     Args:
         api_url: Pybossa API URL passed to the service from C3S, including the project name
@@ -249,39 +257,51 @@ def import_task_files(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str
 
     Returns:
         5-Tuple of full paths to (task_info_only, task, task_run_info_only, task_run) files fetched from Pybossa
-        together with the API Response object
+        together with the API Response object.
+
     """
     # Get the exported "task" zip
-    zip_file, _ = _import_data_from_pybossa(api_url=api_url, data_type="task", **kwargs)
-    task_info_only, task = _extract_files_in_zip(zip_file, extract_to)
+    zip_file, _ = _import_data_from_pybossa(api_url=api_url, data_type="task", format_="csv", **kwargs)
+    task_info_only, task = _extract_task_files_in_zip(zip_file, extract_to)
     # Get the exported "task_run" zip
-    zip_file, response = _import_data_from_pybossa(api_url=api_url, data_type="task_run", **kwargs)
-    task_run_info_only, task_run = _extract_files_in_zip(zip_file, extract_to)
+    zip_file, response = _import_data_from_pybossa(api_url=api_url, data_type="task_run", format_="csv", **kwargs)
+    task_run_info_only, task_run = _extract_task_files_in_zip(zip_file, extract_to)
 
     return task_info_only, task, task_run_info_only, task_run, response
 
 
-def import_result_file(api_url: str, extract_to: str, **kwargs) -> Tuple[str, str, requests.Response]:
-    """Import result files of a project
+def import_result_file(api_url: str, extract_to: str, format_: FORMAT, **kwargs) -> Tuple[List[str], requests.Response]:
+    """Import result files of a project.
 
     Args:
         api_url: Pybossa API URL passed to the service from C3S, including the project name
         extract_to: Extraction path for the result file
+        format_: Format of the exported files
         **kwargs: Passed over to the `_import_data_from_pybossa()`
 
     Returns:
-        3-Tuple of full paths to (result_info_only, result) files fetched from Pybossa together with the API
+        2-Tuple of list of full paths to result files fetched from Pybossa together with the API
         Response object
+
+    Notes:
+        Pybossa API returns a zip with two files when output format is CSV: ~result_info_only.csv, ~result.csv;
+        whereas, it returns a zip with only a single file when the format is JSON: ~result.json.
+
     """
     # Get the exported "result" zip
-    zip_file, response = _import_data_from_pybossa(api_url, data_type="result", **kwargs)
-    result_info_only, result = _extract_files_in_zip(zip_file, extract_to)
-
-    return result_info_only, result, response
+    zip_file, response = _import_data_from_pybossa(api_url, data_type="result", format_=format_, **kwargs)
+    # Delete the existing files with identical names, just in case.
+    zip_members = zip_file.namelist()
+    clean_files(zip_members, extract_to)
+    # Extract the zip file
+    zip_file.extractall(extract_to)
+    app.logger.debug(f"Extracted {zip_members} to {extract_to}.")
+    result_files = [file_path(fname, extract_to) for fname in zip_members]
+    return result_files, response
 
 
 def make_zip(files: Union[str, List[str]], dir_: str = None) -> Tuple[zipfile.ZipFile, io.BytesIO]:
-    """Make a zip bundle with the given files
+    """Make a zip bundle with the given files.
 
     Args:
         files: A single or a list of file names/paths to be zipped
@@ -289,6 +309,7 @@ def make_zip(files: Union[str, List[str]], dir_: str = None) -> Tuple[zipfile.Zi
 
     Returns:
         2-Tuple of the ZipFile object and its contents as bytes. The latter is sent to the C3S for downloading.
+
     """
     # Make the zip
     zip_buffer = io.BytesIO()
@@ -301,7 +322,7 @@ def make_zip(files: Union[str, List[str]], dir_: str = None) -> Tuple[zipfile.Zi
 
 
 def service_response(pybossa_api_resp: requests.Response, zip_buffer: io.BytesIO) -> flask.Response:
-    """Prepare the crowdnalysis-service response
+    """Prepare the crowdnalysis-service response.
 
     Args:
         pybossa_api_resp: The response object received from Pybossa API
@@ -348,8 +369,8 @@ def compute_consensuses(questions: List[str], task_info_only: str, task: str, ta
 
     Returns:
         A dictionary of consensus for each question
-    """
 
+    """
     data_ = None
 
     def _preprocess(df):
@@ -387,25 +408,29 @@ def compute_consensuses(questions: List[str], task_info_only: str, task: str, ta
     return consensuses, data_
 
 
-def export_consensuses_to_csv(data_: cs.data.Data, consensuses: Dict[str, np.ndarray], project_name: str,
-                              dir_: str = None, sep=SEP) -> List[str]:
-    """ Export consensus for each question to a separate CSV file
+def export_consensuses_to_files(format_: FORMAT, data_: cs.data.Data, consensuses: Dict[str, np.ndarray],
+                                project_name: str, dir_: str = None, sep=SEP) -> List[str]:
+    """ Export consensus for each question to a separate CSV file.
 
     Returns:
         Paths to the CSV files.
+
     """
-    csv_files = []
+    output_files = []
     for question, consensus in consensuses.items():
         df = cs.visualization.consensus_as_df(data_, question, consensus)
         df.index.name = TASK_KEY
         app.logger.debug(f"Consensus for {question}:\n{df}")
-        fname = "{p}_consensus_{q}.csv".format(p=slugify(project_name), q=slugify(question))
+        fname = "{p}_consensus_{q}.{f}".format(p=slugify(project_name), q=slugify(question), f=format_.lower())
         fpath = file_path(fname, dir_)
         clean_files(fpath)
-        df.to_csv(fpath, sep=sep, index=True, header=True)
-        csv_files.append(fpath)
+        if format_ == "csv":
+            df.to_csv(fpath, sep=sep, index=True, header=True)
+        else:  # json
+            df.to_json(fpath, orient="index", indent=4)
+        output_files.append(fpath)
         app.logger.debug(f"Consensus for {question} written into {fpath}.")
-    return csv_files
+    return output_files
 
 
 def prep_cookies(cookies_raw: str) -> Dict:
@@ -416,6 +441,7 @@ def prep_cookies(cookies_raw: str) -> Dict:
 
     Returns:
         A dictionary of morsel values.
+
     """
     sc = cookies.SimpleCookie()
     sc.load(cookies_raw)
@@ -443,8 +469,8 @@ def main():
     task_info_only, task, task_run_info_only, task_run, _ = import_task_files(api_url=pbapi_url, extract_to=TEMP_DIR,
                                                                               cookies=req_cookies)
     # Export 'result' file
-    result_info_only, result, pybossa_api_response = import_result_file(api_url=pbapi_url, extract_to=TEMP_DIR,
-                                                                        cookies=req_cookies)
+    result_files, pybossa_api_response = import_result_file(api_url=pbapi_url, extract_to=TEMP_DIR,
+                                                            format_=output_format, cookies=req_cookies)
     # Get questions and answers configured for the project
     info_api, project_name = get_project_info_api_url(pbapi_url)
     QnAs = import_pybossa_project_qa(info_api, cookies=req_cookies)
@@ -453,12 +479,12 @@ def main():
     consensuses, data_ = compute_consensuses(questions, task_info_only, task, task_run, task_key=TASK_KEY,
                                              model=consensus_model)
     # Export consensuses to CSV
-    csv_files = export_consensuses_to_csv(data_, consensuses, project_name, TEMP_DIR, sep=SEP)
+    consensus_files = export_consensuses_to_files(output_format, data_, consensuses, project_name, TEMP_DIR, sep=SEP)
     # Make new zip for the result file
-    _, zip_buffer = make_zip(files=[result_info_only, result] + csv_files)
+    _, zip_buffer = make_zip(files=result_files + consensus_files)
     # Return zip
     response = service_response(pybossa_api_resp=pybossa_api_response, zip_buffer=zip_buffer)
     # Clean files upon exit
-    clean_files([task_info_only, task, task_run_info_only, task_run, result_info_only, result] + csv_files)
+    clean_files([task_info_only, task, task_run_info_only, task_run] + result_files + consensus_files)
     # Return the response
     return response
