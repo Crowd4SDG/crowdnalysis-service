@@ -80,6 +80,14 @@ class UnexpectedFileError(Exception):
     pass
 
 
+def docker_safe_pbapi(url: str) -> str:
+    """Resolve 'localhost' to the internal IP address used by the host"""
+    service_host = os.environ.get("CROWDNALYSIS_SERVICE_HOST")
+    if service_host:
+        url = url.replace("localhost", service_host)
+    return url
+
+
 def _import_data_from_pybossa(api_url: str, data_type: DATA, format_: FORMAT, **kwargs) -> Tuple[zipfile.ZipFile,
                                                                                                  requests.Response]:
     """Get exported task files from Pybossa.
@@ -460,7 +468,8 @@ def main():
     # Prepare cookies to be used for authentication on Pybossa
     req_cookies = prep_cookies(request.headers.get("Cookie"))
     # Get the Pybossa API and other arguments from the request URL
-    pbapi_url = request.args.get(ARG.PYBOSSA_API)
+    pbapi_url = docker_safe_pbapi(request.args.get(ARG.PYBOSSA_API))
+    app.logger.info(f"Pybossa API URL: {pbapi_url}")
     consensus_model = request.args.get(ARG.CONSENSUS_MODEL, default=ARG_DEFAULT.CONSENSUS_MODEL)
     assert consensus_model in cs.factory.Factory.list_registered_algorithms()
     output_format = request.args.get(ARG.OUTPUT_FORMAT, default=ARG_DEFAULT.OUTPUT_FORMAT)

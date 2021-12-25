@@ -16,13 +16,21 @@ given consensus *model*,
    - Sends the consensus and original result files back to the C3S in a `.zip` file;
 4. The user downloads the `.zip` file without leaving the C3S frontend in any of the above steps.
 
-When completed, the service is intended to run as a container in 
-[pybossa-dev](https://github.com/Crowd4SDG/pybossa-dev).
-
 ## Start the service
 The service is basically a [Flask](https://flask.palletsprojects.com/) application running on a 
-[Gunicorn](https://gunicorn.org/) WSGI server. After git cloning the repo, start the service by running:
+[Gunicorn](https://gunicorn.org/) WSGI server. After git cloning the repo, start the service:
 
+### As a standalone app
 ```bash
-$ source bin/init.sh && source bin/boot.sh
+$ bin/init.sh && bin/boot.sh
+```
+
+### As a docker container
+First, build the docker image:
+```bash
+$ docker build --tag crowdnalysis-service .
+```
+Then, run the container (in detached mode):
+```bash
+$ docker run -d -p 5000:5000 --network="bridge" crowdnalysis-service
 ```
