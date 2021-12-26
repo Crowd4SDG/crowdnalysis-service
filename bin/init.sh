@@ -25,4 +25,7 @@ if [[ "$OSTYPE" == "linux-gnu"*  ||  "$OSTYPE" == "darwin"* ]]; then
   fi
 fi
 
+# Create the env variable used by the service
+export PYBOSSA_API_HOST=${NGINX_HOST:-localhost}
+
 echo "Initialization completed."

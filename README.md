@@ -16,20 +16,27 @@ given consensus *model*,
    - Sends the consensus and original result files back to the C3S in a `.zip` file;
 4. The user downloads the `.zip` file without leaving the C3S frontend in any of the above steps.
 
-## Start the service
+If consensus is not applicable to the project (*e.g.* there is no classification task) or if an error occurs during 
+consensus computation, only result files are returned. Log messages are sent to the `stderr`.
+
+## Starting the service
 The service is basically a [Flask](https://flask.palletsprojects.com/) application running on a 
-[Gunicorn](https://gunicorn.org/) WSGI server. After git cloning the repo, start the service:
+[Gunicorn](https://gunicorn.org/) WSGI server and listening to the `5000` port. 
+After git cloning the repo, start the service:
 
 ### As a standalone app
 ```bash
-$ bin/init.sh && bin/boot.sh
+$ source bin/init.sh && bin/boot.sh 
 ```
 
 ### As a docker container
 First, build the docker image:
 ```bash
-$ docker build --tag crowdnalysis-service .
+$ docker build --build-arg PYBOSSA_API_HOST=<Pybossa host> --tag crowdnalysis-service .
 ```
+> If you execute the above command on the shell that you have started C3S and Pybossa by `docker-compose`, 
+> Pybossa host would be the `$NGINX_HOST` env variable's value.   
+
 Then, run the container (in detached mode):
 ```bash
 $ docker run -d -p 5000:5000 --network="bridge" crowdnalysis-service
