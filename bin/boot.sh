@@ -9,8 +9,8 @@ source .venv/bin/activate
 if [[ "$1" == "in_container" ]]; then
     if [[ -z "$CROWDNALYSIS_SERVICE_HOST" ]] || [[ $CROWDNALYSIS_SERVICE_HOST == "localhost" ]]; then
       export CROWDNALYSIS_SERVICE_HOST="host.docker.internal"  # resolves to the internal IP address used by the host
-      echo "Running the service in a docker container."
     fi
+    echo "Starting the service in a Docker container."
 fi
 
 echo "CROWDNALYSIS_SERVICE_HOST: ${CROWDNALYSIS_SERVICE_HOST}"
