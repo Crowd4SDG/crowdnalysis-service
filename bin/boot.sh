@@ -13,7 +13,6 @@ if [[ "$1" == "in_container" ]]; then
     echo "Starting the service in a Docker container."
 fi
 
-echo "CROWDNALYSIS_SERVICE_HOST: ${CROWDNALYSIS_SERVICE_HOST}"
 echo "CROWDNALYSIS_SERVICE_PORT: ${CROWDNALYSIS_SERVICE_PORT:-5000}"
 echo "PYBOSSA_API_HOST: ${PYBOSSA_API_HOST}"
 
