@@ -41,7 +41,6 @@ FORMAT = Literal["csv", "json"]
 INFO_ONLY_EXT = "_info_only"
 TEMP_DIR = safe_join("./", ".tmp/")
 TASK_KEY = "id"
-CONSENSUS_COL = "consensus"
 SEP = ","
 
 # Configure the logs for Flask
@@ -56,14 +55,14 @@ dictConfig({
         "formatter": "default"
     }},
     "root": {
-        "level": "INFO",
+        "level": LOG_LEVEL,
         "handlers": ["wsgi"]
     }
 })
 
 # Define FLASK APP
 app = Flask(__name__)
-app.logger.setLevel(LOG_LEVEL)
+# app.logger.setLevel(LOG_LEVEL)
 
 # Allow cross-origin resource sharing (CORS)
 CORS_RESOURCES = {r"/api/*": {"origins": "*",
