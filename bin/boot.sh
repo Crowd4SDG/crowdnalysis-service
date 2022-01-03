@@ -14,7 +14,8 @@ if [[ "$1" == "in_container" ]]; then
 fi
 
 echo "CROWDNALYSIS_SERVICE_PORT: ${CROWDNALYSIS_SERVICE_PORT:-5000}"
+echo "FLASK_DEBUG: ${FLASK_DEBUG}"
 echo "PYBOSSA_API_HOST: ${PYBOSSA_API_HOST}"
 
-# Start Gunicorn WSGI server
-exec gunicorn -b 0.0.0.0:${CROWDNALYSIS_SERVICE_PORT:-5000} --access-logfile - --error-logfile - service:app
+# Start Gunicorn WSGI server with 4 worker processes for handling requests
+exec gunicorn -w 4 -b 0.0.0.0:${CROWDNALYSIS_SERVICE_PORT:-5000} --access-logfile - --error-logfile - service:app
