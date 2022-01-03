@@ -21,7 +21,7 @@ consensus computation, only result files are returned. Log messages are sent to 
 
 ## Starting the service
 The service is basically a [Flask](https://flask.palletsprojects.com/) application running on a 
-[Gunicorn](https://gunicorn.org/) WSGI server and listening to the `5000` port. 
+[Gunicorn](https://gunicorn.org/) WSGI server and listening on the `5000` port. 
 After git cloning the repo, start the service:
 
 ### As a standalone app
