@@ -10,7 +10,6 @@ fi
 source .venv/bin/activate
 pip install -U pip
 pip install -r requirements.txt
-deactivate
 
 # Install CmdStan CLI
 CMDSTAN_DIR="$HOME/.cmdstan"
@@ -24,6 +23,8 @@ if [[ "$OSTYPE" == "linux-gnu"*  ||  "$OSTYPE" == "darwin"* ]]; then
     echo "CmdStan library already installed in '${CMDSTAN_DIR}'."
   fi
 fi
+
+deactivate  # the virtual env
 
 # Create the env variable used by the service
 export PYBOSSA_API_HOST=${NGINX_HOST:-localhost}
