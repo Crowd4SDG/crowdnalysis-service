@@ -26,18 +26,23 @@ After git cloning the repo, start the service:
 
 ### As a standalone app
 ```bash
-$ source bin/init.sh && bin/boot.sh 
+source bin/init.sh && bin/boot.sh 
 ```
 
 ### As a docker container
 First, build the docker image:
 ```bash
-$ docker build --build-arg PYBOSSA_API_HOST=<Pybossa host> --tag crowdnalysis-service .
+docker build --build-arg PYBOSSA_API_HOST=<Pybossa host> --tag crowdnalysis-service .
 ```
 > If you execute the above command on the shell that you have started C3S and Pybossa by `docker-compose`, 
 > Pybossa host would be the `$NGINX_HOST` env variable's value.   
 
 Then, run the container (in detached mode):
 ```bash
-$ docker run -d -p 5000:5000 --network="bridge" crowdnalysis-service
+docker run -d -p 5000:5000 --network="bridge" crowdnalysis-service
 ```
+
+## Troubleshoot
+### Docker image
+- While building the docker image, if you experience `'internal compiler error: Killed (program cc1plus)'` error 
+during the installation of CmdStan, increase the memory dedicated to your Docker engine, and retry building.  
