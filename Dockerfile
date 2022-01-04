@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.9-slim-buster
+FROM python:3.9-buster
 
 ARG PYBOSSA_API_HOST=localhost
 ARG CROWDNALYSIS_SERVICE_PORT=5000
@@ -9,10 +9,9 @@ ENV PYBOSSA_API_HOST=$PYBOSSA_API_HOST
 ENV CROWDNALYSIS_SERVICE_PORT=$CROWDNALYSIS_SERVICE_PORT
 ENV CROWDNALYSIS_SERVICE_DEBUG=$CROWDNALYSIS_SERVICE_DEBUG
 
-RUN adduser --disabled-password --gecos '' crowdnalysis
-USER crowdnalysis
+# RUN adduser --disabled-password --gecos '' crowdnalysis
+# USER crowdnalysis  # This unprivileged user causes permission errors while compiling Stan files
 
-# RUN MKDIR /app
 WORKDIR /app
 COPY requirements.txt requirements.txt
 COPY ./bin/init.sh ./bin/boot.sh bin/
