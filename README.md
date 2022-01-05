@@ -10,8 +10,8 @@ The use case is as follows:
 2. The request is forwarded to the crowdnalysis-service;
 3. The service 
    - Calls Pybossa API to extract `task`, `task_run` and `result` data,
-   - Computes the **consensus** on tasks for each *question* that was asked to the crowd using the 
-given consensus *model*,
+   - Computes the *consensus* on tasks for each *question* asked to the crowd using the 
+given consensus *model* (Dawid-Skene by default),
    - Creates a `CSV` or a `JSON` file for each consensus depending on user's request,
    - Sends the consensus and original result files back to the C3S in a `.zip` file;
 4. The user downloads the `.zip` file without leaving the C3S frontend in any of the above steps.
@@ -21,7 +21,7 @@ consensus computation, only result files are returned. Log messages are sent to 
 
 ## Starting the service
 The service is basically a [Flask](https://flask.palletsprojects.com/) application running on a 
-[Gunicorn](https://gunicorn.org/) WSGI server and listening on the `5000` port. 
+[Gunicorn](https://gunicorn.org/) WSGI server and listening on the&mdash;configurable&mdash;`5000` port. 
 After git cloning the repo, start the service:
 
 ### As a standalone app
