@@ -35,7 +35,7 @@ class ARG_DEFAULT:
     CONSENSUS_MODEL = "DawidSkene"
 
 
-LOG_LEVEL = logging.DEBUG if int(os.environ.get("FLASK_DEBUG", 0)) else logging.INFO
+LOG_LEVEL = logging.DEBUG if int(os.environ.get("CROWDNALYSIS_SERVICE_DEBUG", 0)) else logging.INFO
 DATA = Literal["task", "task_run", "result"]
 FORMAT = Literal["csv", "json"]
 INFO_ONLY_EXT = "_info_only"
