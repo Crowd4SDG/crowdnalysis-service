@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1
 FROM python:3.9-buster
 
+# Set default values for env vars that can be overwriten by the docker run --env-file option
+ENV CROWDNALYSIS_SERVICE_PORT=5000
+ENV CROWDNALYSIS_SERVICE_DEBUG=0
+ENV PYBOSSA_API_HOST=localhost
+
 # RUN adduser --disabled-password --gecos '' crowdnalysis
 # USER crowdnalysis  # This unprivileged user causes permission errors while compiling Stan files
 
