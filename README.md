@@ -21,8 +21,8 @@ consensus computation, only result files are returned. Log messages are sent to 
 
 ## Starting the service
 The service is basically a [Flask](https://flask.palletsprojects.com/) application running on a 
-[Gunicorn](https://gunicorn.org/) WSGI server and listening on the&mdash;configurable&mdash;`5000` port. 
-After git cloning the repo, start the service:
+[Gunicorn](https://gunicorn.org/) WSGI server and listening on the `5000` port. After git cloning the repo, 
+start the service:
 
 ### As a standalone app
 ```bash
@@ -32,17 +32,23 @@ source bin/init.sh && bin/boot.sh
 ### As a docker container
 First, build the docker image:
 ```bash
-docker build --build-arg PYBOSSA_API_HOST=<Pybossa host> --tag crowdnalysis-service .
+docker build --tag crowdnalysis-service .
 ```
-> If you execute the above command on the shell that you have started C3S and Pybossa by `docker-compose`, 
-> Pybossa host would be the `$NGINX_HOST` env variable's value.   
 
 Then, run the container (in detached mode):
 ```bash
-docker run -d -p 5000:5000 --network="bridge" crowdnalysis-service
+docker run -d -p 5000:5000 --env-file service.env crowdnalysis-service
 ```
+
+### Customization
+- Edit the `service.env` file to configure the `PORT` that the service listens on, and set the `-p` option in 
+`docker run` accordingly. 
+- To view the `DEBUG`-level log messages, set the related environment variable to `1` in the same file.
+
+> When the service is started by `docker-compose` within Pybossa multi-container set-up, 
+> the `etc/crowdnalyis-service.env` file is used instead.
 
 ## Troubleshoot
 ### Docker image
-- While building the docker image, if you experience `'internal compiler error: Killed (program cc1plus)'` error 
+- While building the docker image, if you experience the `'internal compiler error: Killed (program cc1plus)'` error 
 during the installation of CmdStan, increase the memory dedicated to your Docker engine, and retry building.  

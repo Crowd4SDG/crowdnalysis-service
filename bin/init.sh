@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Creates a virtual environment and installs requirements for the service.
+
 echo "Initializing requirements for crowdnalysis-service..."
 
 # Create a virtual env
@@ -7,6 +9,7 @@ if [[ ! -d .venv ]]; then
     echo "Created a virtual environment at ${PWD}/.venv"
 fi
 
+# Install requirements
 source .venv/bin/activate
 pip install -U pip
 pip install -r requirements.txt
@@ -25,8 +28,5 @@ if [[ "$OSTYPE" == "linux-gnu"*  ||  "$OSTYPE" == "darwin"* ]]; then
 fi
 
 deactivate  # the virtual env
-
-# Create the env variable used by the service
-export PYBOSSA_API_HOST=${NGINX_HOST:-localhost}
 
 echo "Initialization completed."
