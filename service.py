@@ -6,6 +6,7 @@ import os
 import re
 import unicodedata
 
+from dataclasses import dataclass
 from http import cookies
 from logging.config import dictConfig
 from typing import Any, Dict, List, Literal, Union, Tuple
@@ -23,16 +24,14 @@ from werkzeug.utils import safe_join
 
 
 class ARG:
-    """Request argument names"""
-    PYBOSSA_API = "pbapi"
-    OUTPUT_FORMAT = "format"
-    CONSENSUS_MODEL = "model"
-
-
-class ARG_DEFAULT:
-    """Default values for request args"""
-    OUTPUT_FORMAT = "csv"
-    CONSENSUS_MODEL = "DawidSkene"
+    """Request argument names and default values to be used as constants"""
+    @dataclass
+    class ReqArg:
+        name: str  # name of the request arg
+        default: str = None  # its default value
+    PYBOSSA_API = ReqArg("pbapi")
+    OUTPUT_FORMAT = ReqArg("format", "csv")
+    CONSENSUS_MODEL = ReqArg("model", "DawidSkene")
 
 
 LOG_LEVEL = logging.DEBUG if int(os.environ.get("CROWDNALYSIS_SERVICE_DEBUG", 0)) else logging.INFO
@@ -80,7 +79,7 @@ class UnexpectedFileError(Exception):
 
 
 def docker_safe_pbapi_url(url: str) -> str:
-    """Resolve 'localhost' to the internal IP address used by the host"""
+    """Resolve 'localhost' to the internal IP address used by the host."""
     service_host = os.environ.get("PYBOSSA_API_HOST")
     if service_host:
         url = url.replace("localhost", service_host)
@@ -141,13 +140,13 @@ def import_pybossa_project_qa(api_url, **kwargs) -> Dict[str, List[Any]]:
     qs_str = re.search(r'(?<=questions":)(.*)(?=],\s*"answers)', task_presenter).group(0) + "]"
     qs_list = ast.literal_eval(qs_str)
     assert isinstance(qs_list, list)
-    QnAs = {}
+    QnA = {}
     for d in qs_list:
         assert isinstance(d, dict)
         assert sorted(d.keys()) == ["answers", "question"]
-        QnAs[d["question"]] = d["answers"]
-    app.logger.debug(f"QnAs: {QnAs}")
-    return QnAs
+        QnA[d["question"]] = d["answers"]
+    app.logger.debug(f"QnA: {QnA}")
+    return QnA
 
 
 def get_project_info_api_url(tasks_api: str) -> Tuple[str, str]:
@@ -469,11 +468,11 @@ def main():
     # Prepare cookies to be used for authentication on Pybossa
     req_cookies = prep_cookies(request.headers.get("Cookie"))
     # Get the Pybossa API and other arguments from the request URL
-    pbapi_url = docker_safe_pbapi_url(request.args.get(ARG.PYBOSSA_API))
+    pbapi_url = docker_safe_pbapi_url(request.args.get(ARG.PYBOSSA_API.name))
     app.logger.info(f"Pybossa API URL: {pbapi_url}")
-    consensus_model = request.args.get(ARG.CONSENSUS_MODEL, default=ARG_DEFAULT.CONSENSUS_MODEL)
+    consensus_model = request.args.get(ARG.CONSENSUS_MODEL.name, default=ARG.CONSENSUS_MODEL.default)
     assert consensus_model in cs.factory.Factory.list_registered_algorithms()
-    output_format = request.args.get(ARG.OUTPUT_FORMAT, default=ARG_DEFAULT.OUTPUT_FORMAT)
+    output_format = request.args.get(ARG.OUTPUT_FORMAT.name, default=ARG.OUTPUT_FORMAT.default)
     assert output_format in FORMAT.__args__
     # Import task* files
     task_info_only, task, task_run_info_only, task_run, _ = import_task_files(api_url=pbapi_url, extract_to=TEMP_DIR,
@@ -483,9 +482,9 @@ def main():
                                                              format_=output_format, cookies=req_cookies)
     # Get questions and answers configured for the project
     info_api, project_name = get_project_info_api_url(pbapi_url)
-    QnAs = import_pybossa_project_qa(info_api, cookies=req_cookies)
+    QnA = import_pybossa_project_qa(info_api, cookies=req_cookies)
     # Compute the consensus for each question
-    questions = list(QnAs.keys())
+    questions = list(QnA.keys())
     consensuses, data_ = compute_consensuses(questions, task_info_only, task, task_run, task_key=TASK_KEY,
                                              model=consensus_model)
     # Export consensuses to CSV/JSON
