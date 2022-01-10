@@ -40,13 +40,18 @@ Then, run the container (in detached mode):
 docker run -d -p 5000:5000 --env-file service.env crowdnalysis-service
 ```
 
-### Customization
-- Edit the `service.env` file to configure the `PORT` that the service listens on, and set the `-p` option in 
-`docker run` accordingly. 
-- To view the `DEBUG`-level log messages, set the related environment variable to `1` in the same file.
+> If you run the service on the same host with Pybossa, use the following command instead: 
+> ```bash
+> docker run -d -p 5000:5000 --env-file service.env --add-host host.docker.internal:host-gateway crowdnalysis-service
+> ``` 
 
-> When the service is started by `docker-compose` within Pybossa multi-container set-up, 
-> the `etc/crowdnalyis-service.env` file is used instead.
+### Customization
+- Edit the `service.env` file to configure the `PORT` that the service listens on and, if you start the service as a 
+container, set the `-p` option in `docker run` accordingly. 
+- To view `DEBUG`-level log messages, set the related environment variable to `1` in the same file.
+
+> When the service is started by `docker-compose` within the Pybossa multi-container set-up, the environment variables 
+> are read from the `etc/crowdnalyis-service.env` file instead.
 
 ## Troubleshoot
 ### Docker image
