@@ -1,23 +1,24 @@
 # crowdnalysis-service
-A service to compute and export the consensus for tasks in CS Project Builder via 
+A service to compute and export the consensus for tasks in 
+[Citizen Science Project Builder](https://lab.citizenscience.ch/) via 
 [crowdnalysis](https://github.com/Crowd4SDG/crowdnalysis).
 
-The service acts as an intermediary between the C3S frontend of 
-[Citizen Science Project Builder](https://lab.citizenscience.ch/) and the underlying 
+The service acts as an intermediary between the [C3S](https://github.com/CitizenScienceCenter/c3s-lab-client) frontend 
+of Citizen Science Project Builder and the underlying 
 [Pybossa API](https://docs.pybossa.com/api/intro/). 
 The use case is as follows:
 1. CS Project Builder user clicks the *Export Results* (in CSV or JSON format) button on the C3S frontend;
 2. The request is forwarded to the crowdnalysis-service;
 3. The service 
    - Calls Pybossa API to extract `task`, `task_run` and `result` data,
-   - Computes the *consensus* on tasks for each *question* asked to the crowd using the 
+   - Computes the *consensus* on tasks for each *question* asked to the crowd by using crowdnalysis with the 
 given consensus *model* (Dawid-Skene by default),
    - Creates a `CSV` or a `JSON` file for each consensus depending on user's request,
    - Sends the consensus and original result files back to the C3S in a `.zip` file;
 4. The user downloads the `.zip` file without leaving the C3S frontend in any of the above steps.
 
-If consensus is not applicable to the project (*e.g.* there is no classification task) or if an error occurs during 
-consensus computation, only result files are returned. Log messages are sent to the `stderr`.
+If consensus does not apply to the project (*e.g.*, there is no classification task) or an error occurs during 
+consensus computation, only the result files are returned. Log messages are sent to the `stderr`.
 
 ## Starting the service
 The service is basically a [Flask](https://flask.palletsprojects.com/) application running on a 
