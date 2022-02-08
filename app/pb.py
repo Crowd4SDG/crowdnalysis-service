@@ -191,10 +191,10 @@ def get_project_info_api_url(tasks_api: str) -> Tuple[str, str]:
         tasks_api: The url passed to the service by the Export Button on C3S frontend
 
     Returns:
-        Returns the 2-tuple of URL with params to be used in GET and the project name.
+        Returns the 2-tuple of URL with params to be used in GET and the project short name.
 
     """
     base = re.match(r"(.+)project", tasks_api).group(1)  # e.g. "http://localhost:20004/
-    project_name = re.search("(?<=project/)(.*)(?=/tasks)", tasks_api).group(1)
-    info_api = f"{base}api/project?name={project_name}"
-    return info_api, project_name
+    project_short_name = re.search("(?<=project/)(.*)(?=/tasks)", tasks_api).group(1)
+    info_api = f"{base}api/project?short_name={project_short_name}"
+    return info_api, project_short_name
