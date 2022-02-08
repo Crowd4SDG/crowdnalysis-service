@@ -27,18 +27,22 @@ def compute_consensuses(questions: List[str], task_info_only: str, task: str, ta
         sep: Separator for the CSV file.
 
     Returns:
-        A dictionary of consensus for each question
+        A 2-tuple of:
+         . a dictionary of (question, consensus) pairs, and
+         . the `crowdnalysis.data.Data` object created for the annotations
 
     """
     data_ = None
+    model_ = None
+    consensuses = {}
 
     def _preprocess(df):
-        """Rename info_i columns in dataframe -> info_<question_i>"""
+        """Rename info_<i> columns in dataframe -> <question_i>"""
         df = df.rename(columns={f"info_{ix}": q for ix, q in enumerate(questions)})
         return df
 
+    # Create a crowdnalysis Data object
     try:
-        # Create a crowdnalysis Data object
         data_ = cs.data.Data.from_pybossa(
             file_path(task_run, dir_),
             questions=questions,
@@ -53,14 +57,22 @@ def compute_consensuses(questions: List[str], task_info_only: str, task: str, ta
     except Exception as err:
         logger.error("Error in creating crowdnalysis.data.Data: {}".format(err))
         questions = ["N/A"]
-    consensuses = {}
-    try:
-        m = cs.factory.Factory.make(model)
-        # Compute consensus for each question
-        consensuses, _ = m.fit_and_compute_consensuses_from_data(d=data_, questions=questions)
-        logger.info(f"Consensuses computed successfully for the questions: {questions}")
-    except Exception as err:
-        logger.error("Error in computing consensus: {}".format(err))
+    # Create consensus model object
+    if data_ is not None:
+        try:
+            model_ = cs.factory.Factory.make(model)
+        except Exception as err:
+            logger.error("Error in creating consensus model {}: {}".format(model, err))
+    if data_ is None or model_ is None:
+        logger.warning("Consensus computation cannot start.")
+        return consensuses, data_
+    # Compute consensus for each question
+    for q in questions:
+        try:
+            consensuses[q], _ = model_.fit_and_compute_consensus_from_data(d=data_, question=q)
+            logger.info(f"Consensus computed successfully for the question: {q}")
+        except Exception as err:
+            logger.error("Error in computing consensus: {}".format(err))
     return consensuses, data_
 
 
